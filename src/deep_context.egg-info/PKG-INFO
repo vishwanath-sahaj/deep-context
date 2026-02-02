@@ -4,9 +4,9 @@ Version: 0.1.0
 Summary: A Python agent project for creating Documentation
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
-Requires-Dist: google-adk>=1.23.0
-Requires-Dist: structlog>=24.1.0
-Requires-Dist: rich>=13.7.0
+Requires-Dist: google-adk>=0.0.1
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: ruff>=0.14.14
 Provides-Extra: dev
 Requires-Dist: ruff>=0.3.0; extra == "dev"
 
