@@ -5,12 +5,14 @@ Summary: A Python agent project for creating Documentation
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: google-adk>=1.23.0
+Requires-Dist: structlog>=24.1.0
+Requires-Dist: rich>=13.7.0
 Provides-Extra: dev
-Requires-Dist: black>=24.0.0; extra == "dev"
+Requires-Dist: ruff>=0.3.0; extra == "dev"
 
-# Agent Hackathon Project
+# DeepContext Project
 
-Minimal Python agent setup using `uv`.
+Python agent project setup using `uv`.
 
 ## Setup
 
