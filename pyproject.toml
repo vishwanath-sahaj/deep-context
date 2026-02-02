@@ -10,7 +10,7 @@ dependencies = [
     "rich>=13.7.0",
     "google-adk>=0.0.1",
     "python-dotenv>=1.0.0",
-    # "mcp-server-playwright>=0.0.1", # Placeholder for MCP
+    "playwright>=1.40.0",
     "ruff>=0.14.14",
 ]
 
