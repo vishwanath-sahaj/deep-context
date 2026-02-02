@@ -1,4 +1,0 @@
-google-adk>=1.23.0
-
-[dev]
-black>=24.0.0
