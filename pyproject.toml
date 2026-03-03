@@ -1,13 +1,21 @@
 [project]
 name = "deep-context"
 version = "0.1.0"
-description = "A Python agent project for creating Documentation"
+description = "A local AI agent for understanding entire codebases using OpenAI + FAISS"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "google-adk>=1.23.0",
-    "structlog>=24.1.0",
+    "openai>=1.30.0",
+    "langchain>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "langchain-community>=0.2.0",
+    "faiss-cpu>=1.8.0",
+    "tiktoken>=0.7.0",
     "rich>=13.7.0",
+    "structlog>=24.1.0",
+    "gitpython>=3.1.40",
+    "python-dotenv>=1.0.0",
+    "pathspec>=0.12.1",
 ]
 
 [project.optional-dependencies]
@@ -15,8 +23,10 @@ dev = [
     "ruff>=0.3.0",
 ]
 
+[project.scripts]
+deep-context = "src.agents.main:main"
+
 [tool.uv]
-# optimal settings for uv
 package = true
 
 [tool.ruff]
