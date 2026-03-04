@@ -11,6 +11,10 @@ import argparse
 import sys
 from pathlib import Path
 
+from agents.executor.agent import Executor
+from agents.indexer.agent import index_repository
+from agents.planner.agent import QueryRouter
+from agents.verifier.agent import verify
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -23,10 +27,6 @@ from rich.text import Text
 
 from src.common.config import config
 from src.common.logger import get_logger, setup_logging
-from src.executor import Executor
-from src.indexer import index_repository
-from src.planner import QueryRouter
-from src.verifier import verify
 
 setup_logging()
 logger = get_logger(__name__)
