@@ -1,8 +1,8 @@
 # 🤖 RepoPilot — Deep Context
 
-A **local AI agent** for understanding entire codebases, powered by **OpenAI GPT** and **FAISS**.
+A **local AI agent** for understanding entire codebases, powered by **Anthropic Claude** + **FAISS**.
 
-Inspired by the [Medium article](https://medium.com/@agastyatodi/building-a-local-ai-agent-for-understanding-entire-codebases-5e8e5f9c7bb0) by Agastya Todi, re-implemented with OpenAI instead of Ollama.
+Inspired by the [Medium article](https://medium.com/@agastyatodi/building-a-local-ai-agent-for-understanding-entire-codebases-5e8e5f9c7bb0) by Agastya Todi.
 
 ---
 
@@ -18,7 +18,7 @@ User Query
        │
        ▼
 ┌─────────────┐
-│  Executor   │  ← Runs the right tool (metadata scan / FAISS search / GPT reasoning)
+│  Executor   │  ← Runs the right tool (metadata scan / FAISS search / Claude reasoning)
 └──────┬──────┘
        │
        ▼
@@ -34,9 +34,9 @@ User Query
 
 | Type | Trigger keywords | Tool used |
 |------|-----------------|-----------|
-| `METADATA` | "how many", "list all", "count" | File-system scan → GPT |
-| `SEARCH` | "where is", "find", "locate" | FAISS k-NN → GPT |
-| `REASONING` | Everything else | FAISS RAG → GPT |
+| `METADATA` | "how many", "list all", "count" | File-system scan → Claude |
+| `SEARCH` | "where is", "find", "locate" | FAISS k-NN → Claude |
+| `REASONING` | Everything else | FAISS RAG → Claude |
 | `TOOL` | "reindex", "clone" | Side-effect commands |
 
 ---
@@ -58,17 +58,17 @@ uv sync
 
 ### 3. Configure API key
 
-Copy `.env.example` to `.env` and set your key:
+Copy `.env.example` to `.env` and set your Anthropic API key:
 
 ```bash
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Edit .env and set CLAUDE_API_KEY=sk-ant-...
 ```
 
 Or export directly:
 
 ```bash
-export OPENAI_API_KEY=sk-...
+export CLAUDE_API_KEY=sk-ant-...
 ```
 
 ---
@@ -90,14 +90,14 @@ uv run python -m src.agents.main --repo /path/to/my-project
 ### Force re-scan + re-embed
 
 ```bash
-uv run python -m src.agents.main --repo . --reindex
+uv run python -m src.agents.main --repo /path/to/my-project --reindex
 ```
 
 ### Interactive commands (inside the REPL)
 
 | Command | Effect |
 |---------|--------|
-| `reindex` | Re-scan and re-embed the repository |
+| `reindex` | Re-scan and re-embed the current repository |
 | `clone <url>` | Clone a GitHub repo and index it |
 | `help` | Show help |
 | `exit` / `quit` | Quit |
@@ -119,30 +119,46 @@ uv run python -m src.agents.main --repo . --reindex
 ```
 deep-context/
 ├── src/
-│   ├── agents/      # CLI entry point (main.py)
-│   ├── common/      # Config + logger
-│   ├── indexer/     # File scanner + FAISS indexer
-│   ├── retrieval/   # Similarity search + context builder
-│   ├── planner/     # QueryRouter (METADATA/SEARCH/REASONING/TOOL)
-│   ├── executor/    # Tool handlers + OpenAI calls
-│   └── verifier/    # Output validation + self-critique
-├── index/           # Persisted FAISS index (auto-created)
-├── .env             # API keys (gitignored)
+│   ├── agents/
+│   │   ├── main.py      # CLI entry point & REPL
+│   │   ├── planner/     # QueryRouter (METADATA/SEARCH/REASONING/TOOL)
+│   │   ├── executor/    # Tool handlers + Claude calls
+│   │   ├── indexer/     # File scanner + FAISS indexer
+│   │   ├── retrieval/   # Similarity search + context builder
+│   │   └── verifier/    # Output validation + self-critique
+│   └── common/          # Config + structured logger
+├── .env                 # API keys (gitignored)
+├── .env.example         # Template for environment variables
 └── pyproject.toml
+```
+
+> **Index location:** Each analysed repository gets its own FAISS index stored at
+> `<repo>/.deep-context-index/` (auto-created, gitignored by default).  
+> You can override this globally with the `INDEX_DIR` env var.
+
+---
+
+## Models
+
+| Purpose | Default |
+|---------|---------|
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (runs locally, no API needed) |
+| Chat / Reasoning | `claude-haiku-4-5` |
+
+Override via `.env`:
+
+```bash
+CLAUDE_CHAT_MODEL=claude-opus-4-5
+EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
 ```
 
 ---
 
-## Models used
+## Environment Variables
 
-| Purpose | Default model |
-|---------|--------------|
-| Embeddings | `text-embedding-3-small` |
-| Chat / Reasoning | `gpt-4o-mini` |
-
-Change via `.env`:
-
-```bash
-OPENAI_EMBEDDING_MODEL=text-embedding-3-large
-OPENAI_CHAT_MODEL=gpt-4o
-```
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `CLAUDE_API_KEY` | ✅ | — | Your Anthropic/Claude API key |
+| `CLAUDE_CHAT_MODEL` | ❌ | `claude-haiku-4-5` | Claude model for chat/reasoning |
+| `EMBEDDING_MODEL` | ❌ | `all-MiniLM-L6-v2` | HuggingFace sentence-transformer model |
+| `INDEX_DIR` | ❌ | `<repo>/.deep-context-index` | Override FAISS index storage path |

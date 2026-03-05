@@ -12,7 +12,7 @@ class Config:
     """Central configuration object."""
 
     # Anthropic / Claude
-    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    CLAUDE_API_KEY: str = os.getenv("CLAUDE_API_KEY", "")
     CLAUDE_CHAT_MODEL: str = os.getenv("CLAUDE_CHAT_MODEL", "claude-haiku-4-5")
 
     # Embeddings — Anthropic has no embedding API; use a local HuggingFace model
@@ -46,6 +46,7 @@ class Config:
             "dist", "build", ".eggs", "*.egg-info",
             ".idea", ".vscode", ".pytest_cache", ".mypy_cache",
             "coverage", "htmlcov", ".tox",
+            ".deep-context-index",  # skip the index cache we write into each repo
         }
     )
 
@@ -53,9 +54,9 @@ class Config:
 
     @classmethod
     def validate(cls) -> None:
-        if not cls.ANTHROPIC_API_KEY:
+        if not cls.CLAUDE_API_KEY:
             raise ValueError(
-                "ANTHROPIC_API_KEY is not set. "
+                "CLAUDE_API_KEY is not set. "
                 "Please set it in your .env file or environment."
             )
 
