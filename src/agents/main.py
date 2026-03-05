@@ -15,6 +15,7 @@ from agents.executor.agent import Executor
 from agents.indexer.agent import index_repository
 from agents.planner.agent import QueryRouter
 from agents.verifier.agent import verify
+from agents.discovery.agent import DiscoveryAgent
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -49,12 +50,17 @@ BANNER = """
 HELP_TEXT = """\
 **Commands:**
 - Type any question about the codebase to get an answer.
-- `reindex`          — Re-scan and re-embed the repository.
-- `clone <url>`      — Clone a GitHub repo and index it.
-- `help`             — Show this help.
-- `exit` / `quit`    — Exit RepoPilot.
+- `discover <path>`           — Extract critical user flows from repository.
+- `discover <path> --reindex` — Force re-index before discovering flows.
+- `reindex`                   — Re-scan and re-embed the repository.
+- `clone <url>`               — Clone a GitHub repo and index it.
+- `help`                      — Show this help.
+- `exit` / `quit`             — Exit RepoPilot.
 
-**Query examples:**
+**Examples:**
+- `discover .`                        — Discover flows in current repo
+- `discover /home/user/frontend`      — Discover flows in specific repo
+- `discover . --reindex`              — Re-index current repo then discover
 - *How many Python files are in this repo?*
 - *Where is the authentication logic defined?*
 - *Explain the overall architecture of this project.*
@@ -81,6 +87,76 @@ def _print_help() -> None:
             border_style="yellow",
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Command Handlers
+# ---------------------------------------------------------------------------
+
+def _handle_discover_command(command: str) -> None:
+    """Handle 'discover <path> [--reindex]' command."""
+    from pathlib import Path
+    from agents.discovery.agent import DiscoveryAgent
+    
+    # Parse command
+    parts = command.split()
+    if len(parts) < 2:
+        # No path provided, show usage
+        console.print("[yellow]Usage: discover <path> [--reindex][/yellow]")
+        console.print("[dim]Examples:[/dim]")
+        console.print("[dim]  discover /home/user/frontend[/dim]")
+        console.print("[dim]  discover . --reindex[/dim]")
+        return
+    
+    # Extract path and flags
+    target_path_str = parts[1]
+    force_reindex = "--reindex" in parts or "-r" in parts
+    
+    target_path = Path(target_path_str).expanduser().resolve()
+    
+    # Validate path
+    if not target_path.exists():
+        console.print(f"[red]❌ Path not found: {target_path}[/red]")
+        return
+    
+    if not target_path.is_dir():
+        console.print(f"[red]❌ Not a directory: {target_path}[/red]")
+        return
+    
+    # Run discovery
+    try:
+        reindex_msg = " (with re-indexing)" if force_reindex else ""
+        console.print(f"\n[bold]🔍 Discovering flows in:[/bold] [cyan]{target_path}[/cyan]{reindex_msg}\n")
+        
+        discovery = DiscoveryAgent(repo_path=target_path, auto_index=True, force_reindex=force_reindex)
+        result = discovery.discover_flows()
+        
+        # Display results
+        console.print("\n")
+        console.print(
+            Panel(
+                Markdown(result.flows_markdown),
+                title=f"🎯 Critical User Flows ({result.num_flows} flows)",
+                border_style="green",
+                padding=(1, 2),
+            )
+        )
+        
+        # Display metadata
+        console.print("\n[dim]" + "─" * 80 + "[/dim]")
+        console.print(f"[dim]✓ Analyzed {len(result.sources)} source files[/dim]")
+        if result.followup_queries_used:
+            console.print(
+                f"[dim]✓ Refined metadata with {len(result.followup_queries_used)} queries[/dim]"
+            )
+        console.print(f"[dim]✓ Completion: {'100%' if result.is_complete else 'Partial'}[/dim]")
+        console.print("[dim]" + "─" * 80 + "[/dim]\n")
+        
+    except KeyboardInterrupt:
+        console.print("\n[yellow]⚠️  Discovery cancelled by user[/yellow]")
+    except Exception as exc:
+        console.print(f"\n[red]❌ Discovery failed: {exc}[/red]")
+        logger.error("discover_command_failed", error=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +216,11 @@ def run_agent(repo_path: Path, reindex: bool = False) -> None:
 
         if query.lower() == "help":
             _print_help()
+            continue
+
+        # NEW: Discover command
+        if query.lower().startswith("discover"):
+            _handle_discover_command(query)
             continue
 
         # Classify → Execute → Verify
