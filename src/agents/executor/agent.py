@@ -23,7 +23,7 @@ from src.common.logger import get_logger
 
 logger = get_logger(__name__)
 
-_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+_client = anthropic.Anthropic(api_key=config.CLAUDE_API_KEY)
 
 # ---------------------------------------------------------------------------
 # System prompt for the reasoning / search LLM calls

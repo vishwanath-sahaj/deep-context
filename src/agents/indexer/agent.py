@@ -114,7 +114,11 @@ def index_repository(repo_path: str | Path, force: bool = False) -> FAISS:
     Returns the FAISS vector store.
     """
     repo_path = Path(repo_path).expanduser().resolve()
-    index_path = config.INDEX_DIR.expanduser().resolve()
+    # Store the index inside the target repo so each repo has its own index.
+    # Falls back to config.INDEX_DIR only if explicitly set via env var.
+    default_index = repo_path / ".deep-context-index"
+    env_index = os.getenv("INDEX_DIR")
+    index_path = Path(env_index).expanduser().resolve() if env_index else default_index
 
     embeddings = HuggingFaceEmbeddings(
         model_name=config.EMBEDDING_MODEL,

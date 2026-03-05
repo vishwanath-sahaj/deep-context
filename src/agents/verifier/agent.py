@@ -17,7 +17,7 @@ from src.common.logger import get_logger
 
 logger = get_logger(__name__)
 
-_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+_client = anthropic.Anthropic(api_key=config.CLAUDE_API_KEY)
 
 _UNCERTAIN_PATTERNS = re.compile(
     r"\b(I (don't|do not|cannot|can't) know|not sure|unclear|"
