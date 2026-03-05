@@ -1,5 +1,5 @@
 """
-deep-context: A local AI agent for understanding entire codebases using OpenAI + FAISS.
+deep-context: A local AI agent for understanding entire codebases using Claude + FAISS.
 
 Package structure:
   src/

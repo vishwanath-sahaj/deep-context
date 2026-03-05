@@ -4,7 +4,7 @@ Executor — runs the correct tool based on QueryType.
 Tools:
   METADATA  -> scan file-system stats without embedding search
   SEARCH    -> FAISS nearest-neighbour lookup
-  REASONING -> RAG: retrieve relevant chunks then call GPT
+  REASONING -> RAG: retrieve relevant chunks then call Claude
   TOOL      -> side-effect commands (clone / reindex)
 """
 from __future__ import annotations
@@ -16,14 +16,14 @@ from typing import Any
 from agents.indexer.agent import collect_files, index_repository
 from agents.planner.agent import QueryType
 from agents.retrieval.agent import build_context_string, retrieve
-from openai import OpenAI
+import anthropic
 
 from src.common.config import config
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
 
-_client = OpenAI(api_key=config.OPENAI_API_KEY)
+_client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
 # ---------------------------------------------------------------------------
 # System prompt for the reasoning / search LLM calls
@@ -68,24 +68,18 @@ def _execute_metadata(query: str, repo_path: Path) -> str:
     stats_text = "\n".join(lines)
 
     # Let the LLM answer the specific metadata question with these stats
-    response = _client.chat.completions.create(
-        model=config.OPENAI_CHAT_MODEL,
+    response = _client.messages.create(
+        model=config.CLAUDE_CHAT_MODEL,
+        max_tokens=1024,
+        system="You are a helpful assistant that answers questions about repository statistics. Answer using ONLY the data provided.",
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful assistant that answers questions about "
-                    "repository statistics. Answer using ONLY the data provided."
-                ),
-            },
             {
                 "role": "user",
                 "content": f"User query: {query}\n\nRepository stats:\n{stats_text}",
             },
         ],
-        temperature=0,
     )
-    return response.choices[0].message.content
+    return response.content[0].text
 
 
 def _execute_search(query: str, vector_store: Any) -> str:
@@ -93,10 +87,11 @@ def _execute_search(query: str, vector_store: Any) -> str:
     retrieved = retrieve(vector_store, query, top_k=8)
     context = build_context_string(retrieved, max_chars=6000)
 
-    response = _client.chat.completions.create(
-        model=config.OPENAI_CHAT_MODEL,
+    response = _client.messages.create(
+        model=config.CLAUDE_CHAT_MODEL,
+        max_tokens=2048,
+        system=_SYSTEM_PROMPT,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
@@ -105,9 +100,8 @@ def _execute_search(query: str, vector_store: Any) -> str:
                 ),
             },
         ],
-        temperature=0.1,
     )
-    answer = response.choices[0].message.content
+    answer = response.content[0].text
 
     # Append source citations
     sources = sorted(
@@ -125,10 +119,11 @@ def _execute_reasoning(query: str, vector_store: Any) -> str:
     retrieved = retrieve(vector_store, query, top_k=6)
     context = build_context_string(retrieved, max_chars=8000)
 
-    response = _client.chat.completions.create(
-        model=config.OPENAI_CHAT_MODEL,
+    response = _client.messages.create(
+        model=config.CLAUDE_CHAT_MODEL,
+        max_tokens=4096,
+        system=_SYSTEM_PROMPT,
         messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
@@ -137,9 +132,8 @@ def _execute_reasoning(query: str, vector_store: Any) -> str:
                 ),
             },
         ],
-        temperature=0.3,
     )
-    answer = response.choices[0].message.content
+    answer = response.content[0].text
 
     sources = sorted(
         {meta.get("source", "?") for _, meta, _ in retrieved}

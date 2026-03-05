@@ -1,13 +1,13 @@
 [project]
 name = "deep-context"
 version = "0.1.0"
-description = "A local AI agent for understanding entire codebases using OpenAI + FAISS"
+description = "A local AI agent for understanding entire codebases using Claude + FAISS"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "openai>=1.30.0",
+    "anthropic>=0.40.0",
     "langchain>=0.2.0",
-    "langchain-openai>=0.1.0",
+    "langchain-huggingface>=0.0.3",
     "langchain-community>=0.2.0",
     "faiss-cpu>=1.8.0",
     "tiktoken>=0.7.0",
@@ -16,6 +16,7 @@ dependencies = [
     "gitpython>=3.1.40",
     "python-dotenv>=1.0.0",
     "pathspec>=0.12.1",
+    "sentence-transformers>=5.2.3",
 ]
 
 [project.optional-dependencies]
