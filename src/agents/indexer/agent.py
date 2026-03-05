@@ -7,7 +7,7 @@ from typing import List, Tuple
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.common.config import config
 from src.common.logger import get_logger
@@ -116,9 +116,8 @@ def index_repository(repo_path: str | Path, force: bool = False) -> FAISS:
     repo_path = Path(repo_path).expanduser().resolve()
     index_path = config.INDEX_DIR.expanduser().resolve()
 
-    embeddings = OpenAIEmbeddings(
-        model=config.OPENAI_EMBEDDING_MODEL,
-        openai_api_key=config.OPENAI_API_KEY,
+    embeddings = HuggingFaceEmbeddings(
+        model_name=config.EMBEDDING_MODEL,
     )
 
     faiss_index_file = index_path / "index.faiss"
@@ -137,7 +136,7 @@ def index_repository(repo_path: str | Path, force: bool = False) -> FAISS:
 
     chunks, metadatas = chunk_files(files, repo_path)
 
-    # Build in batches to avoid hitting OpenAI rate limits
+    # Build in batches to keep memory usage manageable
     BATCH = 500
     vector_store: FAISS | None = None
     for start in range(0, len(chunks), BATCH):

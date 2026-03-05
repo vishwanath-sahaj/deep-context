@@ -66,7 +66,7 @@ def _print_banner() -> None:
     console.print(
         Panel(
             Text(BANNER, style="bold cyan", justify="center"),
-            subtitle="[dim]Powered by OpenAI + FAISS[/dim]",
+            subtitle="[dim]Powered by Claude + FAISS[/dim]",
             border_style="bright_blue",
             box=box.DOUBLE_EDGE,
         )
@@ -95,8 +95,8 @@ def run_agent(repo_path: Path, reindex: bool = False) -> None:
     console.print(
         Panel(
             f"[bold green]Repository:[/bold green] {repo_path}\n"
-            f"[bold green]Embedding model:[/bold green] {config.OPENAI_EMBEDDING_MODEL}\n"
-            f"[bold green]Chat model:[/bold green] {config.OPENAI_CHAT_MODEL}",
+            f"[bold green]Embedding model:[/bold green] {config.EMBEDDING_MODEL}\n"
+            f"[bold green]Chat model:[/bold green] {config.CLAUDE_CHAT_MODEL}",
             title="[bold]⚙️  Configuration[/bold]",
             border_style="green",
         )

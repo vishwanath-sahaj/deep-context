@@ -11,12 +11,14 @@ load_dotenv(_root / ".env")
 class Config:
     """Central configuration object."""
 
-    # OpenAI
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_EMBEDDING_MODEL: str = os.getenv(
-        "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+    # Anthropic / Claude
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    CLAUDE_CHAT_MODEL: str = os.getenv("CLAUDE_CHAT_MODEL", "claude-haiku-4-5")
+
+    # Embeddings — Anthropic has no embedding API; use a local HuggingFace model
+    EMBEDDING_MODEL: str = os.getenv(
+        "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
     )
-    OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 
     # Paths
     INDEX_DIR: Path = Path(os.getenv("INDEX_DIR", "./index"))
@@ -51,9 +53,9 @@ class Config:
 
     @classmethod
     def validate(cls) -> None:
-        if not cls.OPENAI_API_KEY:
+        if not cls.ANTHROPIC_API_KEY:
             raise ValueError(
-                "OPENAI_API_KEY is not set. "
+                "ANTHROPIC_API_KEY is not set. "
                 "Please set it in your .env file or environment."
             )
 
