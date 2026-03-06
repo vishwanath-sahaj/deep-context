@@ -162,3 +162,41 @@ EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
 | `CLAUDE_CHAT_MODEL` | ❌ | `claude-haiku-4-5` | Claude model for chat/reasoning |
 | `EMBEDDING_MODEL` | ❌ | `all-MiniLM-L6-v2` | HuggingFace sentence-transformer model |
 | `INDEX_DIR` | ❌ | `<repo>/.deep-context-index` | Override FAISS index storage path |
+
+---
+
+## Playwright MCP & Google SSO Setup (Action Agent)
+
+In order to test the Action Agent on websites that require Google Single Sign-On (SSO) securely and easily without wiping your session cookies, Playwright MCP now supports connecting directly to your active browser via a Chrome Extension!
+
+### 1. Install the Chrome Extension
+1. Install the [Playwright MCP Bridge](https://chromewebstore.google.com/detail/playwright-mcp-bridge/mmlmfjhmonkocbjadbfplnigmagldckm) directly from the official Chrome Web Store on the browser you want to use.
+
+### 2. Configure Authentication & the MCP Tool
+The Chrome Extension will display a token you must use to authenticate. Open your `.env` file and add it:
+
+```bash
+PLAYWRIGHT_MCP_EXTENSION_TOKEN=your_token_from_extension_here
+```
+
+Ensure your `task_executor` (`tools.py`) sets the `--extension` flag. The token will be automatically inherited by the Playwright MCP server when `run_action_agent.py` loads your `.env` file!
+
+```python
+server_params = StdioServerParameters(
+    command="npx",
+    args=[
+        "-y", "@playwright/mcp", 
+        "--extension"
+    ]
+)
+```
+
+### 3. Run the Agent
+1. Have your Chrome browser open (you can already be logged into your sites, GitHub, Google, etc.).
+2. Run your action agent:
+
+```bash
+python src/agents/action/run_action_agent.py
+```
+
+Playwright MCP will magically connect to your open browser tab using the MCP bridge extension. You will literally see it interact with your already-logged-in session right in front of your eyes!
