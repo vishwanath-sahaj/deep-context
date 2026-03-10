@@ -4,14 +4,35 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from langchain_core.tools import tool
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from src.agents.scribe.types import StepRecord
+
 
 # Base directory for screenshots (src/agents/action/screenshots/)
 SCREENSHOTS_BASE_DIR = Path(__file__).parent / "screenshots"
+
+# Module-level callback that the pipeline sets before invoking the tool.
+# This avoids changing the @tool signature (LangChain tools can't have extra params).
+_step_callback: Optional[Callable[[StepRecord], None]] = None
+
+
+def set_step_callback(callback: Optional[Callable[[StepRecord], None]]) -> None:
+    """Set (or clear) the global step-record callback used by task_executor."""
+    global _step_callback
+    _step_callback = callback
+
+
+def _emit_step(record: StepRecord) -> None:
+    """Emit a step record to the registered callback, if any."""
+    if _step_callback is not None:
+        try:
+            _step_callback(record)
+        except Exception:
+            pass  # Never let callback errors break execution
 
 
 def _create_screenshot_dir() -> Path:
@@ -69,10 +90,10 @@ def _find_ref_in_snapshot(snapshot_text: str, element_description: str) -> Optio
     We do a case-insensitive search.
     """
     element_lower = element_description.lower()
-    
+
     # Try to find lines containing [ref=...] and matching the description
     ref_pattern = re.compile(r'\[ref=([\w\d]+)\]')
-    
+
     # Generic element names we want to avoid matching *only* on
     generic_terms = {"button", "input", "textbox", "textarea", "link", "checkbox", "radio", "select"}
 
@@ -85,9 +106,9 @@ def _find_ref_in_snapshot(snapshot_text: str, element_description: str) -> Optio
         ref_match = ref_pattern.search(line)
         if not ref_match:
             continue
-            
+
         ref_value = ref_match.group(1)
-        
+
         # Check for exact substring match first (highest priority)
         # Remove quotes for cleaner matching
         clean_desc = element_lower.replace('"', '').replace("'", "")
@@ -99,12 +120,12 @@ def _find_ref_in_snapshot(snapshot_text: str, element_description: str) -> Optio
         # Strip quotes and brackets
         clean_desc_words = re.sub(r'[^\w\s]', ' ', element_lower).split()
         keywords = [w for w in clean_desc_words if len(w) > 2]
-        
+
         if not keywords:
             continue
 
         matches = sum(1 for kw in keywords if kw in line_lower)
-        
+
         # If the *only* matched words are generic (like "button"), don't blindly click it
         matched_words = [kw for kw in keywords if kw in line_lower]
         all_generic = all(mw in generic_terms for mw in matched_words)
@@ -472,6 +493,7 @@ async def _auto_fill_remaining_fields(
     step_counter: int,
     results: list,
     screenshot_paths: list,
+    start_url: str,
 ) -> int:
     """
     Take a FRESH snapshot, scan for unfilled form fields, and auto-fill them.
@@ -514,20 +536,12 @@ async def _auto_fill_remaining_fields(
         is_dropdown = any(role in line_lower for role in dropdown_roles)
 
         if is_textbox:
-            # Detect already-filled fields:
-            # In Playwright snapshots, filled textboxes show content after [ref=X]:
-            #   - textbox "Client Name *" [ref=e33]: TEST-HACK-AcmeCorp
-            # Empty ones just end at the ref or have nothing after colon:
-            #   - textbox "Website *" [ref=e37]
             after_ref = line_stripped[ref_match.end():].strip()
-            # Remove trailing colon and whitespace
             after_ref_clean = after_ref.lstrip(':').strip()
             if after_ref_clean:
-                # Field already has content, skip it
                 print(f"[TaskExecutor] Skipping already-filled textbox: '{label}' (value: {after_ref_clean[:30]}...)")
                 continue
 
-            # Generate a TEST-HACK value based on the label
             clean_label = re.sub(r'[\*\s]+$', '', label).strip()
             mock_value = f"TEST-HACK-{clean_label.replace(' ', '-')}"
             print(f"[TaskExecutor] Auto-filling textbox | ref={ref_value} | label={label} | value={mock_value}")
@@ -537,19 +551,31 @@ async def _auto_fill_remaining_fields(
                     "text": mock_value,
                     "slowly": True
                 })
-                results.append(f"Auto-filled '{mock_value}' into '{label}'")
+                result_msg = f"Auto-filled '{mock_value}' into '{label}'"
+                results.append(result_msg)
                 step_counter += 1
                 path = await _take_screenshot(session, screenshot_dir, step_counter, f"auto_fill_{clean_label}")
                 if path:
                     screenshot_paths.append(path)
+
+                _emit_step(StepRecord(
+                    step_number=step_counter,
+                    action="auto_fill",
+                    target_element=label,
+                    matched_element=f"ref={ref_value} | {line_stripped}",
+                    match_type="exact",
+                    value=mock_value,
+                    accessibility_snapshot=fresh_snapshot,
+                    screenshot_path=path or None,
+                    result=result_msg,
+                    url=start_url,
+                ))
             except Exception as e:
                 print(f"[TaskExecutor] WARNING: Auto-fill failed for '{label}': {e}")
 
         elif is_dropdown:
-            # Check if already has a selected value (non-placeholder text after ref)
             after_ref = line_stripped[ref_match.end():].strip()
             after_ref_clean = after_ref.lstrip(':').strip()
-            # If there's meaningful content after ref, it's already selected
             if after_ref_clean and not any(skip in after_ref_clean.lower() for skip in ['select a', 'choose', '--', 'placeholder']):
                 print(f"[TaskExecutor] Skipping already-selected dropdown: '{label}' (value: {after_ref_clean[:30]}...)")
                 continue
@@ -557,13 +583,25 @@ async def _auto_fill_remaining_fields(
             clean_label = re.sub(r'[\*\s]+$', '', label).strip()
             print(f"[TaskExecutor] Auto-selecting dropdown | ref={ref_value} | label={label}")
             try:
-                # Use the fresh snapshot for the select action
                 success, msg = await _handle_select_action(session, fresh_snapshot, clean_label, "")
-                results.append(f"Auto-select {clean_label}: {msg}")
+                result_msg = f"Auto-select {clean_label}: {msg}"
+                results.append(result_msg)
                 step_counter += 1
                 path = await _take_screenshot(session, screenshot_dir, step_counter, f"auto_select_{clean_label}")
                 if path:
                     screenshot_paths.append(path)
+
+                _emit_step(StepRecord(
+                    step_number=step_counter,
+                    action="auto_select",
+                    target_element=clean_label,
+                    matched_element=f"ref={ref_value} | {line_stripped}",
+                    match_type="exact" if success else "not_found",
+                    accessibility_snapshot=fresh_snapshot,
+                    screenshot_path=path or None,
+                    result=result_msg,
+                    url=start_url,
+                ))
             except Exception as e:
                 print(f"[TaskExecutor] WARNING: Auto-select failed for '{label}': {e}")
 
@@ -582,11 +620,11 @@ async def task_executor(flow_string: str, start_url: str) -> str:
     """
     # Connect to your existing open Chrome using the Playwright MCP Bridge extension!
     # Make sure you have the extension installed in your Chrome browser.
-    
+
     # The environment variable is loaded by dotenv in run_action_agent.py.
     # Pass it specifically in the env dictionary to the MCP server.
     token = os.getenv("PLAYWRIGHT_MCP_EXTENSION_TOKEN")
-    
+
     server_params = StdioServerParameters(
         command="npx",
         args=[
@@ -625,6 +663,19 @@ async def task_executor(flow_string: str, start_url: str) -> str:
                 if path:
                     screenshot_paths.append(path)
 
+                _emit_step(StepRecord(
+                    step_number=step_counter,
+                    action="navigate",
+                    target_element=start_url,
+                    matched_element=None,
+                    match_type="none",
+                    value=None,
+                    accessibility_snapshot="",
+                    screenshot_path=path or None,
+                    result=f"Navigated to {start_url}",
+                    url=start_url,
+                ))
+
                 for step in steps:
                     step_lower = step.lower()
                     try:
@@ -653,27 +704,40 @@ async def task_executor(flow_string: str, start_url: str) -> str:
                         is_snapshot_fill = "snapshot_and_fill_remaining" in step_lower
 
                         action_done = False
+                        action_type = "unknown"
+                        target_element = step
+                        matched_element = None
+                        match_type = "none"
+                        action_value = None
+                        result_msg = ""
+                        error_msg = None
 
                         if is_wait_action:
+                            action_type = "wait"
                             wait_match = re.search(r"wait\s*(\d+)", step_lower)
                             seconds = int(wait_match.group(1)) if wait_match else 2
+                            target_element = f"{seconds} seconds"
                             print(f"[TaskExecutor] Waiting {seconds} seconds...")
                             await asyncio.sleep(seconds)
-                            results.append(f"Waited {seconds} seconds")
+                            result_msg = f"Waited {seconds} seconds"
+                            results.append(result_msg)
                             action_done = True
 
                         elif parsed_fill is not None:
-                            # This is a fill/type action — we have (element_desc, value)
+                            action_type = "fill"
                             element_desc, value = parsed_fill
+                            action_value = value
+                            target_element = element_desc or step
                             print(f"[TaskExecutor] Parsed fill step | element='{element_desc}' | value='{value}'")
 
-                            # Find the target textbox using the element description
                             ref = _find_textbox_ref(snapshot_text, element_desc)
                             if not ref:
-                                # Fallback: try generic element search with the full step text
                                 ref = _find_ref_in_snapshot(snapshot_text, element_desc or step)
 
                             if ref:
+                                # Determine match type
+                                match_type = "exact" if element_desc.lower() in snapshot_text.lower() else "fuzzy"
+                                matched_element = f"ref={ref}"
                                 print(f"[TaskExecutor] Typing | ref={ref} | text={value}")
                                 try:
                                     await session.call_tool("browser_type", {
@@ -681,7 +745,8 @@ async def task_executor(flow_string: str, start_url: str) -> str:
                                         "text": value,
                                         "slowly": True
                                     })
-                                    results.append(f"Typed '{value}' into element ref={ref}")
+                                    result_msg = f"Typed '{value}' into element ref={ref}"
+                                    results.append(result_msg)
                                     action_done = True
                                 except Exception as type_err:
                                     print(f"[TaskExecutor] browser_type failed, trying browser_fill_form fallback: {type_err}")
@@ -694,97 +759,160 @@ async def task_executor(flow_string: str, start_url: str) -> str:
                                                 "value": value
                                             }]
                                         })
-                                        results.append(f"Filled '{value}' into element ref={ref} (via fill_form)")
+                                        result_msg = f"Filled '{value}' into element ref={ref} (via fill_form)"
+                                        results.append(result_msg)
                                         action_done = True
                                     except Exception as fill_err:
                                         print(f"[TaskExecutor] browser_fill_form also failed: {fill_err}")
-                                        results.append(f"Could not type into element ref={ref}: {type_err}")
+                                        result_msg = f"Could not type into element ref={ref}: {type_err}"
+                                        error_msg = str(fill_err)
+                                        results.append(result_msg)
                             else:
+                                match_type = "not_found"
                                 print(f"[TaskExecutor] WARNING: Could not find input element for: {step}")
-                                results.append(f"Could not find input element for: {step}")
+                                result_msg = f"Could not find input element for: {step}"
+                                error_msg = "Element not found in accessibility snapshot"
+                                results.append(result_msg)
 
                         elif parsed_select is not None:
-                            # This is a select/dropdown action
+                            action_type = "select"
                             element_desc, desired_value = parsed_select
+                            action_value = desired_value
+                            target_element = element_desc
                             print(f"[TaskExecutor] Parsed select step | element='{element_desc}' | value='{desired_value}'")
                             success, msg = await _handle_select_action(
                                 session, snapshot_text, element_desc, desired_value
                             )
+                            result_msg = msg
                             results.append(msg)
                             action_done = success
+                            match_type = "exact" if success else "not_found"
+                            if success:
+                                matched_element = element_desc
 
                         elif is_snapshot_fill:
-                            # Special action: scan page and fill all remaining unfilled fields
+                            action_type = "auto_fill"
+                            target_element = "all remaining fields"
                             print("[TaskExecutor] Running snapshot_and_fill_remaining...")
                             step_counter = await _auto_fill_remaining_fields(
                                 session, snapshot_text, screenshot_dir,
-                                step_counter, results, screenshot_paths
+                                step_counter, results, screenshot_paths,
+                                start_url,
                             )
-                            results.append("Completed auto-fill of remaining fields")
+                            result_msg = "Completed auto-fill of remaining fields"
+                            results.append(result_msg)
                             action_done = True
+                            match_type = "exact"
 
                         elif is_hover_action:
-                            # Extract what to hover over
+                            action_type = "hover"
                             hover_target = re.sub(r'hover\s*(on|over)?\s*', '', step_lower).strip()
+                            target_element = hover_target or step
                             ref = _find_ref_in_snapshot(snapshot_text, hover_target or step)
 
                             if ref:
+                                matched_element = f"ref={ref}"
+                                match_type = "fuzzy"
                                 print(f"[TaskExecutor] Hovering | ref={ref}")
                                 await session.call_tool("browser_hover", {
                                     "ref": ref,
                                     "element": step
                                 })
-                                results.append(f"Hovered over element ref={ref}")
+                                result_msg = f"Hovered over element ref={ref}"
+                                results.append(result_msg)
                                 action_done = True
                             else:
+                                match_type = "not_found"
                                 print(f"[TaskExecutor] WARNING: Could not find element to hover: {step}")
-                                results.append(f"Could not find hover target: {step}")
+                                result_msg = f"Could not find hover target: {step}"
+                                error_msg = "Element not found"
+                                results.append(result_msg)
 
                         elif is_click_action:
-                            # Extract what to click
+                            action_type = "click"
                             click_target = re.sub(r'(click|press)\s*(on)?\s*', '', step_lower).strip()
+                            target_element = click_target or step
                             ref = _find_ref_in_snapshot(snapshot_text, click_target or step)
 
                             if ref:
+                                matched_element = f"ref={ref}"
+                                match_type = "fuzzy"
                                 print(f"[TaskExecutor] Clicking | ref={ref}")
                                 await session.call_tool("browser_click", {
                                     "ref": ref,
                                     "element": step
                                 })
-                                results.append(f"Clicked element ref={ref}")
+                                result_msg = f"Clicked element ref={ref}"
+                                results.append(result_msg)
                                 action_done = True
                             else:
+                                match_type = "not_found"
                                 print(f"[TaskExecutor] WARNING: Could not find element to click: {step}")
-                                results.append(f"Could not find click target: {step}")
+                                result_msg = f"Could not find click target: {step}"
+                                error_msg = "Element not found"
+                                results.append(result_msg)
                         else:
-                            # Default: try to click the element
+                            action_type = "click"
                             ref = _find_ref_in_snapshot(snapshot_text, step)
                             if ref:
+                                matched_element = f"ref={ref}"
+                                match_type = "fuzzy"
                                 print(f"[TaskExecutor] Clicking (default) | ref={ref}")
                                 await session.call_tool("browser_click", {
                                     "ref": ref,
                                     "element": step
                                 })
-                                results.append(f"Clicked '{step}' ref={ref}")
+                                result_msg = f"Clicked '{step}' ref={ref}"
+                                results.append(result_msg)
                                 action_done = True
                             else:
+                                match_type = "not_found"
                                 print(f"[TaskExecutor] WARNING: Could not find element: {step}")
-                                results.append(f"Could not find element: {step}")
+                                result_msg = f"Could not find element: {step}"
+                                error_msg = "Element not found"
+                                results.append(result_msg)
 
                         # Take screenshot after each completed action
+                        screenshot_path = None
                         if action_done:
                             step_counter += 1
-                            path = await _take_screenshot(session, screenshot_dir, step_counter, step)
-                            if path:
-                                screenshot_paths.append(path)
+                            screenshot_path = await _take_screenshot(session, screenshot_dir, step_counter, step)
+                            if screenshot_path:
+                                screenshot_paths.append(screenshot_path)
+
+                        # Emit step record
+                        _emit_step(StepRecord(
+                            step_number=step_counter if action_done else step_counter + 1,
+                            action=action_type,
+                            target_element=target_element,
+                            matched_element=matched_element,
+                            match_type=match_type,
+                            value=action_value,
+                            accessibility_snapshot=snapshot_text,
+                            screenshot_path=screenshot_path,
+                            result=result_msg,
+                            url=start_url,
+                            error=error_msg,
+                        ))
 
                     except Exception as e:
                         print(f"[TaskExecutor] ERROR: Action step failed | step={step} | error={e}")
                         results.append(f"Failed step '{step}': {e}")
 
-                        # Screenshot on error too
                         step_counter += 1
-                        await _take_screenshot(session, screenshot_dir, step_counter, f"error_{step}")
+                        err_path = await _take_screenshot(session, screenshot_dir, step_counter, f"error_{step}")
+
+                        _emit_step(StepRecord(
+                            step_number=step_counter,
+                            action="error",
+                            target_element=step,
+                            match_type="not_found",
+                            accessibility_snapshot=snapshot_text if 'snapshot_text' in dir() else "",
+                            screenshot_path=err_path or None,
+                            result=f"Failed: {e}",
+                            url=start_url,
+                            error=str(e),
+                        ))
                         break
 
                 # Final screenshot
@@ -793,6 +921,16 @@ async def task_executor(flow_string: str, start_url: str) -> str:
                 path = await _take_screenshot(session, screenshot_dir, step_counter, "final_state")
                 if path:
                     screenshot_paths.append(path)
+
+                _emit_step(StepRecord(
+                    step_number=step_counter,
+                    action="final_screenshot",
+                    target_element="final page state",
+                    match_type="none",
+                    screenshot_path=path or None,
+                    result="Final screenshot captured",
+                    url=start_url,
+                ))
 
     except Exception as e:
         print(f"[TaskExecutor] ERROR: MCP Playwright error | error={e}")

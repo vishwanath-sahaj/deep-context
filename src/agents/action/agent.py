@@ -4,6 +4,9 @@ import os
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from agents.action.tools import task_executor
+from src.common.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 # Build a name -> callable lookup for the tools
@@ -14,11 +17,11 @@ class ActionAgent:
     """Action Agent using Claude that can call the Playwright TaskExecutor tool to process UI flows."""
 
     def __init__(self):
-        # Ensure Anthropic key is available
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        # Ensure Anthropic key is available (support both env var names)
+        api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
         if not api_key:
-            logger.error("ANTHROPIC_API_KEY must be set in environment variables.")
-            raise ValueError("ANTHROPIC_API_KEY must be set in environment variables.")
+            logger.error("ANTHROPIC_API_KEY or CLAUDE_API_KEY must be set in environment variables.")
+            raise ValueError("ANTHROPIC_API_KEY or CLAUDE_API_KEY must be set in environment variables.")
 
         self.llm = ChatAnthropic(
             model="claude-haiku-4-5-20251001",
