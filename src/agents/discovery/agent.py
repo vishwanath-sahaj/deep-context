@@ -230,7 +230,8 @@ class DiscoveryAgent:
             logger.info("force_reindexing", path=str(self.repo_path))
 
             with Status("[cyan]Rebuilding FAISS index...", spinner="dots"):
-                vector_store = index_repository(self.repo_path, force=True)
+                # Only index src directory to avoid build artifacts
+                vector_store = index_repository(self.repo_path, force=True, include_dirs=["src"])
 
             console.print("[green]Repository re-indexed successfully[/green]")
             return vector_store
@@ -253,7 +254,8 @@ class DiscoveryAgent:
             logger.info("indexing_repository", path=str(self.repo_path))
 
             with Status("[cyan]Building FAISS index...", spinner="dots"):
-                vector_store = index_repository(self.repo_path, force=False)
+                # Only index src directory to avoid build artifacts
+                vector_store = index_repository(self.repo_path, force=False, include_dirs=["src"])
 
             console.print("[green]Repository indexed successfully[/green]")
             return vector_store

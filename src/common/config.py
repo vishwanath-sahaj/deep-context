@@ -47,6 +47,11 @@ class Config:
             ".idea", ".vscode", ".pytest_cache", ".mypy_cache",
             "coverage", "htmlcov", ".tox",
             ".deep-context-index",  # skip the index cache we write into each repo
+            ".next",  # Next.js build output
+            ".nuxt",  # Nuxt.js build output
+            ".cache",  # Various build caches
+            "out",  # Next.js static export
+            ".turbo",  # Turborepo cache
         }
     )
 

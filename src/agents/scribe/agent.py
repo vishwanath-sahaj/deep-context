@@ -173,7 +173,6 @@ class ScribeAgent:
         prompt_text = format_documentation_prompt(
             analysis_json=analysis_json,
             screenshot_list=screenshot_list,
-            codebase_summary=codebase_summary,
         )
 
         # Build message content: text prompt + screenshot images

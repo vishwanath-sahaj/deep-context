@@ -43,7 +43,7 @@ class FlowIdentifierAgent:
     def identify_flows(
         self,
         codebase_summary: str,
-        request_missing_metadata: bool = True
+        request_missing_metadata: bool = False
     ) -> FlowIdentificationResult:
         """
         Main entry point: Extract flows from codebase summary.
@@ -242,7 +242,7 @@ class FlowIdentifierAgent:
 # Convenience function for direct usage
 def identify_flows(
     codebase_summary: str,
-    request_missing_metadata: bool = True
+    request_missing_metadata: bool = False
 ) -> FlowIdentificationResult:
     """
     Convenience function to identify flows without instantiating agent.

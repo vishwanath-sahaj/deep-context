@@ -63,7 +63,7 @@ def test_flow_identifier():
     try:
         result = agent.identify_flows(
             codebase_summary=codebase_summary,
-            request_missing_metadata=True
+            request_missing_metadata=False
         )
         
         print("\n✅ Flow extraction complete!")

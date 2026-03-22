@@ -35,25 +35,48 @@ def _should_skip_file(path: Path) -> bool:
     return False
 
 
-def collect_files(root: Path) -> List[Tuple[Path, str]]:
+def collect_files(root: Path, include_dirs: List[str] = None) -> List[Tuple[Path, str]]:
     """
     Walk *root* and return (path, content) tuples for every text file.
     Binary files, build artefacts, and excessively large files are skipped.
+    
+    Args:
+        root: Root directory to scan
+        include_dirs: If provided, only scan these subdirectories (e.g., ["src", "app"])
+                     If None, scan entire root directory
     """
     results: List[Tuple[Path, str]] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        # Prune skip-dirs in-place so os.walk doesn't descend into them
-        dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
-        for fname in filenames:
-            fpath = Path(dirpath) / fname
-            if _should_skip_file(fpath):
-                continue
-            try:
-                content = fpath.read_text(encoding="utf-8", errors="replace")
-                results.append((fpath, content))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("read_error", path=str(fpath), error=str(exc))
-    logger.info("files_collected", count=len(results), root=str(root))
+    
+    # If include_dirs specified, only scan those directories
+    scan_roots = []
+    if include_dirs:
+        for inc_dir in include_dirs:
+            scan_path = root / inc_dir
+            if scan_path.exists() and scan_path.is_dir():
+                scan_roots.append(scan_path)
+            else:
+                logger.warning("include_dir_not_found", dir=inc_dir, root=str(root))
+        if not scan_roots:
+            logger.warning("no_valid_include_dirs", falling_back_to_root=True)
+            scan_roots = [root]
+    else:
+        scan_roots = [root]
+    
+    for scan_root in scan_roots:
+        for dirpath, dirnames, filenames in os.walk(scan_root):
+            # Prune skip-dirs in-place so os.walk doesn't descend into them
+            dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
+            for fname in filenames:
+                fpath = Path(dirpath) / fname
+                if _should_skip_file(fpath):
+                    continue
+                try:
+                    content = fpath.read_text(encoding="utf-8", errors="replace")
+                    results.append((fpath, content))
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("read_error", path=str(fpath), error=str(exc))
+    
+    logger.info("files_collected", count=len(results), root=str(root), include_dirs=include_dirs)
     return results
 
 
@@ -104,12 +127,18 @@ def chunk_files(
 # Public API
 # ---------------------------------------------------------------------------
 
-def index_repository(repo_path: str | Path, force: bool = False) -> FAISS:
+def index_repository(repo_path: str | Path, force: bool = False, include_dirs: List[str] = None) -> FAISS:
     """
     Build (or reload) a FAISS vector store for *repo_path*.
 
     If an index already exists in ``config.INDEX_DIR`` and *force* is False,
     the existing index is loaded instead of rebuilding.
+
+    Args:
+        repo_path: Path to repository
+        force: Force rebuild even if index exists
+        include_dirs: If provided, only index these subdirectories (e.g., ["src"])
+                     If None, index entire repository (respecting SKIP_DIRS)
 
     Returns the FAISS vector store.
     """
@@ -133,8 +162,8 @@ def index_repository(repo_path: str | Path, force: bool = False) -> FAISS:
             allow_dangerous_deserialization=True,
         )
 
-    logger.info("indexing_repository", path=str(repo_path))
-    files = collect_files(repo_path)
+    logger.info("indexing_repository", path=str(repo_path), include_dirs=include_dirs)
+    files = collect_files(repo_path, include_dirs=include_dirs)
     if not files:
         raise ValueError(f"No readable source files found in {repo_path}")
 

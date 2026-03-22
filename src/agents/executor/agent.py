@@ -41,6 +41,32 @@ Your job:
 - If the context is insufficient, say so honestly — do NOT hallucinate.
 - Keep answers concise but complete.
 - Use markdown formatting (code blocks, bullet lists) where it aids clarity.
+
+IMPORTANT - Source File Prioritization:
+When analyzing UI elements (buttons, links, forms, inputs), you MUST prioritize information from:
+
+1. **IMPLEMENTATION FILES** (highest priority):
+   - Component files: .tsx, .jsx, .vue, .svelte
+   - Page files: pages/, routes/, app/ directories
+   - Extract EXACT text from JSX/HTML: <button>Write an article</button> → "Write an article"
+   - Extract EXACT attributes: data-testid="submit-btn" → "submit-btn"
+
+2. **AVOID using test/snapshot files** (lowest priority):
+   - Files in: __tests__/, __snapshots__/, .test., .spec., .snapshot.
+   - Test snapshots often contain outdated or mock data
+   - Only use tests if NO implementation files are available
+
+3. **When extracting UI metadata**:
+   - DO extract: Exact button text
+   - DO extract: Exact aria-label, exact data-testid values, IF PRESENT
+   - DO NOT paraphrase: If button says "Write an article", don't say "Create article"
+   - DO NOT generalize: Prefer specific values over generic descriptions
+
+Example Good Response:
+"The button to create a new article is in `src/pages/Contents.tsx:45` with text 'Write an article' and data-testid='new-article-btn'."
+
+Example Bad Response:
+"There is a Create button for adding articles." (too generic, no source, paraphrased)
 """
 
 

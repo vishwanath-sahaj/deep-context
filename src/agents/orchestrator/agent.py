@@ -261,6 +261,24 @@ When `action_agent` fails:
 4. Document successful flows even if some flows failed
 5. Provide clear status updates after each step
 6. Maximum 3 retry attempts per flow
+7. **CRITICAL**: Do NOT execute the same flow multiple times if it already succeeded
+8. **CRITICAL**: Track which flows you've already executed to avoid duplicates
+
+## When to Stop (Completion Criteria)
+
+You are DONE and should stop when:
+
+1. ✅ **All discovered flows have been executed once** (either successfully or after 3 retry attempts)
+2. ✅ **Scribe documentation has been generated** for all successful flows
+3. ✅ **Final summary has been provided** to the user
+
+**DO NOT:**
+- ❌ Re-execute flows that already succeeded
+- ❌ Keep trying to "improve" or "refine" successful flows
+- ❌ Run discovery again unless recovering from an error
+- ❌ Keep iterating after all flows are complete
+
+**After completing all flows, provide a final summary and STOP immediately.**
 
 ## Output Format
 
@@ -269,6 +287,8 @@ After completing all flows, provide a summary:
 - Flows executed successfully
 - Flows failed (with reasons)
 - Documentation generated
+
+Then STOP. Do not continue executing tools after the summary.
 
 Be concise but thorough. Focus on completing the task efficiently.
 """
@@ -421,7 +441,7 @@ class OrchestratorAgent:
                 # Initial flow identification
                 result = agent.identify_flows(
                     codebase_summary=codebase_summary,
-                    request_missing_metadata=True
+                    request_missing_metadata=False
                 )
                 flows_markdown = result.flows_markdown
                 result_data = {
