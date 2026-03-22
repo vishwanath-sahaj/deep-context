@@ -354,7 +354,12 @@ class OrchestratorAgent:
         from src.agents.scribe import ScribeAgent
         
         if self._scribe_agent is None:
-            self._scribe_agent = ScribeAgent(api_key=self._api_key)
+            if not self.state.repo_path:
+                raise ValueError("repo_path must be set before creating ScribeAgent")
+            self._scribe_agent = ScribeAgent(
+                api_key=self._api_key,
+                repo_path=Path(self.state.repo_path)
+            )
         return self._scribe_agent
 
     # ---------------------------------------------------------------------------

@@ -138,7 +138,7 @@ class DiscoveryAgent:
 
         # Phase 3: Execute each flow and collect step records
         action_agent = ActionAgent()
-        scribe_agent = ScribeAgent()
+        scribe_agent = ScribeAgent(repo_path=self.repo_path)
         scribe_outputs = []
 
         for i, pflow in enumerate(parsed_flows, 1):

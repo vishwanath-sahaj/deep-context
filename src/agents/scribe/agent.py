@@ -29,12 +29,26 @@ class ScribeAgent:
     Two-pass approach:
     1. Analysis pass: Structured breakdown of what happened and why
     2. Documentation pass: Human-quality markdown with screenshots
+    
+    Can optionally write documentation to repository automatically.
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, repo_path: Optional[Path] = None):
+        """
+        Initialize Scribe Agent.
+        
+        Args:
+            api_key: Anthropic API key (optional, uses config if not provided)
+            repo_path: Repository path where documentation will be written (REQUIRED)
+        """
+        if repo_path is None:
+            raise ValueError("repo_path is required for ScribeAgent")
+        
         self._client = anthropic.Anthropic(api_key=api_key or config.CLAUDE_API_KEY)
         self._model = "claude-sonnet-4-5"
-        logger.info("ScribeAgent initialized with model: %s", self._model)
+        self._repo_path = Path(repo_path)
+        self._accumulated_outputs: List[ScribeOutput] = []
+        logger.info("ScribeAgent initialized with model: %s, repo: %s", self._model, self._repo_path)
 
     def generate_documentation(
         self,
@@ -76,12 +90,20 @@ class ScribeAgent:
         )
         logger.info("Documentation pass complete (%d chars)", len(documentation))
 
-        return ScribeOutput(
+        output = ScribeOutput(
             flow_name=execution_record.flow_name,
             documentation_markdown=documentation,
             flow_execution=execution_record,
             codebase_summary=codebase_summary,
         )
+        
+        # Accumulate output for batch writing
+        self._accumulated_outputs.append(output)
+        
+        # Write to repository immediately
+        self._write_to_repo()
+        
+        return output
 
     def _build_execution_summary(self, record: FlowExecutionRecord) -> str:
         """Build a text summary of the execution record for the analysis prompt."""
@@ -222,3 +244,35 @@ class ScribeAgent:
         except Exception as e:
             logger.warning("Could not load screenshot %s: %s", path, e)
         return None
+    
+    def _write_to_repo(self) -> Path:
+        """
+        Write all accumulated documentation to repository.
+        
+        Creates: {repo_path}/.deep-context-docs/flows.md
+        
+        Returns:
+            Path to the written documentation file
+        """
+        if not self._accumulated_outputs:
+            logger.warning("No documentation to write")
+            return None
+        
+        output_dir = self._repo_path / ".deep-context-docs"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = output_dir / "flows.md"
+        
+        # Combine all documentation with separators
+        combined = "\n\n---\n\n".join(
+            output.documentation_markdown for output in self._accumulated_outputs
+        )
+        
+        output_file.write_text(combined, encoding="utf-8")
+        
+        logger.info(
+            "Documentation written to repository",
+            path=str(output_file),
+            num_flows=len(self._accumulated_outputs)
+        )
+        
+        return output_file
